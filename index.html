@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Rainbow Reveal</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a0a12;overflow:hidden;touch-action:none;
+    font-family:system-ui,sans-serif;color:#eee}
+  #app{position:relative;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}
+  canvas{background:#000;touch-action:none;box-shadow:0 0 40px rgba(255,255,255,.08)}
+  #hud{position:absolute;top:10px;left:10px;font-size:14px;line-height:1.5;
+    text-shadow:0 1px 3px #000;pointer-events:none;user-select:none}
+  #hint{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+    font-size:12px;opacity:.6;pointer-events:none;user-select:none}
+  #guessBtn{position:absolute;bottom:10px;right:10px;width:40px;height:40px;border-radius:50%;
+    background:#222;color:#fff;border:1px solid #555;font-size:18px;cursor:pointer}
+  #guessBox{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    display:none;flex-direction:column;gap:8px;align-items:center;background:#111;
+    padding:16px;border-radius:8px;border:1px solid #444}
+  #guessInput{font-size:16px;padding:6px 8px;border-radius:4px;border:1px solid #555;
+    background:#000;color:#fff;width:200px;text-align:center}
+  #overlay{position:absolute;inset:0;display:none;flex-direction:column;gap:12px;
+    align-items:center;justify-content:center;background:rgba(0,0,0,.75);text-align:center}
+  #overlay button{font-size:24px;background:none;border:1px solid #666;color:#fff;
+    border-radius:50%;width:48px;height:48px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud"></div>
+  <div id="hint">move to reveal &middot; enter / ? to guess</div>
+  <button id="guessBtn">?</button>
+  <div id="guessBox">
+    <div>What do you see?</div>
+    <input id="guessInput" type="text" autocomplete="off" spellcheck="false">
+  </div>
+  <div id="overlay">
+    <div id="overlayText" style="font-size:22px"></div>
+    <button id="restartBtn">&#8635;</button>
+  </div>
+</div>
+<script>
+(function(){
+"use strict";
+
+var W = 480, H = 480;
+
+// ---- procedural hidden-image authoring helpers ----
+function star(cx, cy, rOuter, rInner, points, color) {
+  var d = [], i, ang, r, x, y;
+  for (i = 0; i < points * 2; i++) {
+    ang = -Math.PI / 2 + i * Math.PI / points;
+    r = (i % 2 === 0) ? rOuter : rInner;
+    x = cx + r * Math.cos(ang);
+    y = cy + r * Math.sin(ang);
+    d.push([i === 0 ? 'M' : 'L', x, y]);
+  }
+  d.push(['Z']);
+  return { t: 'p', c: color, d: d };
+}
+
+var IMAGES = [
+  {
+    name: 'star',
+    accepted: ['star', 'stars'],
+    shapes: [ star(240, 240, 150, 62, 5, '#ffd23f') ]
+  },
+  {
+    name: 'cloud',
+    accepted: ['cloud', 'clouds'],
+    shapes: [{
+      t: 'c', c: '#dce8f7',
+      d: [[170,260,55],[230,225,65],[300,225,60],[345,260,48],[255,290,75],[160,290,40]]
+    }]
+  },
+  {
+    name: 'rainbow',
+    accepted: ['rainbow', 'rainbows'],
+    shapes: [
+      { t:'a', c:'#ff4d4d', cx:240, cy:430, r:220, a0:Math.PI, a1:2*Math.PI, w:26 },
+      { t:'a', c:'#ff9f43', cx:240, cy:430, r:193, a0:Math.PI, a1:2*Math.PI, w:26 },
+      { t:'a', c:'#ffe74c', cx:240, cy:430, r:166, a0:Math.PI, a1:2*Math.PI, w:26 },
+      { t:'a', c:'#3ddc84', cx:240, cy:430, r:139, a0:Math.PI, a1:2*Math.PI, w:26 },
+      { t:'a', c:'#4d94ff', cx:240, cy:430, r:112, a0:Math.PI, a1:2*Math.PI, w:26 },
+      { t:'a', c:'#a04dff', cx:240, cy:430, r:85,  a0:Math.PI, a1:2*Math.PI, w:26 }
+    ]
+  }
+];
+
+function drawShape(ctx, s) {
+  ctx.beginPath();
+  if (s.t === 'p') {
+    for (var i = 0; i < s.d.length; i++) {
+      var cmd = s.d[i], op = cmd[0];
+      if (op === 'M') ctx.moveTo(cmd[1], cmd[2]);
+      else if (op === 'L') ctx.lineTo(cmd[1], cmd[2]);
+      else if (op === 'C') ctx.bezierCurveTo(cmd[1],cmd[2],cmd[3],cmd[4],cmd[5],cmd[6]);
+      else if (op === 'Q') ctx.quadraticCurveTo(cmd[1],cmd[2],cmd[3],cmd[4]);
+      else if (op === 'Z') ctx.closePath();
+    }
+    ctx.fillStyle = s.c;
+    ctx.fill();
+  } else if (s.t === 'c') {
+    ctx.fillStyle = s.c;
+    for (var j = 0; j < s.d.length; j++) {
+      var circ = s.d[j];
+      ctx.moveTo(circ[0] + circ[2], circ[1]);
+      ctx.arc(circ[0], circ[1], circ[2], 0, Math.PI * 2);
+    }
+    ctx.fill();
+  } else if (s.t === 'a') {
+    ctx.strokeStyle = s.c;
+    ctx.lineWidth = s.w;
+    ctx.lineCap = 'round';
+    ctx.arc(s.cx, s.cy, s.r, s.a0, s.a1);
+    ctx.stroke();
+  }
+}
+
+// ---- setup canvases ----
+var canvas = document.createElement('canvas');
+canvas.width = W; canvas.height = H;
+document.getElementById('app').insertBefore(canvas, document.getElementById('hud'));
+var ctx = canvas.getContext('2d');
+
+var imgCanvas = document.createElement('canvas');
+imgCanvas.width = W; imgCanvas.height = H;
+var imgCtx = imgCanvas.getContext('2d');
+
+var maskCanvas = document.createElement('canvas');
+maskCanvas.width = W; maskCanvas.height = H;
+var maskCtx = maskCanvas.getContext('2d');
+
+// ---- game state ----
+var roundIndex = 0;
+var lives = 3;
+var totalDistance = 0;
+var pos = { x: W/2, y: H/2 };
+var target = { x: W/2, y: H/2 };
+var lastAngle = 0;
+var trail = [];
+var keys = {};
+var guessOpen = false;
+var gameOver = false;
+var campaignComplete = false;
+
+var hud = document.getElementById('hud');
+var overlay = document.getElementById('overlay');
+var overlayText = document.getElementById('overlayText');
+var guessBox = document.getElementById('guessBox');
+var guessInput = document.getElementById('guessInput');
+
+function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+function normalize(s) { return s.trim().toLowerCase().replace(/[^a-z]/g, ''); }
+function moves() { return Math.floor(totalDistance / 10); }
+
+function loadRound(i) {
+  if (i >= IMAGES.length) { campaignComplete = true; updateHUD(); return; }
+  roundIndex = i;
+  imgCtx.clearRect(0, 0, W, H);
+  var shapes = IMAGES[i].shapes;
+  for (var k = 0; k < shapes.length; k++) drawShape(imgCtx, shapes[k]);
+  maskCtx.globalCompositeOperation = 'source-over';
+  maskCtx.fillStyle = '#000';
+  maskCtx.fillRect(0, 0, W, H);
+  trail = [];
+  updateHUD();
+}
+
+function punchHole(x, y, radius) {
+  radius = radius || 34;
+  maskCtx.save();
+  maskCtx.globalCompositeOperation = 'destination-out';
+  var g = maskCtx.createRadialGradient(x, y, 0, x, y, radius);
+  g.addColorStop(0, 'rgba(0,0,0,1)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  maskCtx.fillStyle = g;
+  maskCtx.beginPath();
+  maskCtx.arc(x, y, radius, 0, Math.PI * 2);
+  maskCtx.fill();
+  maskCtx.restore();
+}
+
+function updateHUD() {
+  var hearts = '';
+  for (var i = 0; i < 3; i++) hearts += (i < lives ? '♥' : '♡') + ' ';
+  hud.textContent = hearts + '  moves: ' + moves() + '  round: ' +
+    (Math.min(roundIndex + 1, IMAGES.length)) + '/' + IMAGES.length;
+
+  if (gameOver || campaignComplete) {
+    overlay.style.display = 'flex';
+    overlayText.textContent = (gameOver ? 'Game Over' : 'Campaign Complete!') +
+      ' — ' + moves() + ' moves';
+  } else {
+    overlay.style.display = 'none';
+  }
+}
+
+function openGuess() {
+  if (gameOver || campaignComplete) return;
+  guessOpen = true;
+  guessBox.style.display = 'flex';
+  guessInput.value = '';
+  guessInput.focus();
+}
+function closeGuess() {
+  guessOpen = false;
+  guessBox.style.display = 'none';
+  guessInput.blur();
+}
+function submitGuess() {
+  var val = normalize(guessInput.value);
+  var accepted = IMAGES[roundIndex].accepted;
+  var ok = false;
+  for (var i = 0; i < accepted.length; i++) if (normalize(accepted[i]) === val) ok = true;
+  closeGuess();
+  if (ok) {
+    loadRound(roundIndex + 1);
+  } else {
+    lives -= 1;
+    if (lives <= 0) gameOver = true;
+    updateHUD();
+  }
+}
+
+function restart() {
+  lives = 3;
+  totalDistance = 0;
+  gameOver = false;
+  campaignComplete = false;
+  loadRound(0);
+}
+
+// ---- input ----
+function canvasPoint(clientX, clientY) {
+  var r = canvas.getBoundingClientRect();
+  return {
+    x: clamp((clientX - r.left) * (W / r.width), 0, W),
+    y: clamp((clientY - r.top) * (H / r.height), 0, H)
+  };
+}
+canvas.addEventListener('mousemove', function (e) {
+  var p = canvasPoint(e.clientX, e.clientY);
+  target.x = p.x; target.y = p.y;
+});
+canvas.addEventListener('touchmove', function (e) {
+  e.preventDefault();
+  var t = e.touches[0];
+  var p = canvasPoint(t.clientX, t.clientY);
+  target.x = p.x; target.y = p.y;
+}, { passive: false });
+canvas.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') {
+    if (guessOpen) submitGuess(); else openGuess();
+    return;
+  }
+  if (e.key === 'Escape' && guessOpen) { closeGuess(); return; }
+  keys[e.key] = true;
+});
+document.addEventListener('keyup', function (e) { keys[e.key] = false; });
+
+document.getElementById('guessBtn').addEventListener('click', function () {
+  if (guessOpen) submitGuess(); else openGuess();
+});
+document.getElementById('restartBtn').addEventListener('click', restart);
+
+// ---- unicorn rendering ----
+function drawUnicorn(p, angle) {
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-10, -8);
+  ctx.lineTo(-10, 8);
+  ctx.closePath();
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(12, -3);
+  ctx.lineTo(22, -10);
+  ctx.strokeStyle = '#ffd23f';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTrail() {
+  for (var i = 1; i < trail.length; i++) {
+    var a = trail[i - 1], b = trail[i];
+    var hue = (b.dist * 0.6) % 360;
+    var alpha = i / trail.length;
+    ctx.strokeStyle = 'hsla(' + hue + ',90%,60%,' + (alpha * 0.9) + ')';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+}
+
+// ---- loop ----
+var last = 0;
+function update(dt) {
+  if (gameOver || campaignComplete || guessOpen) return;
+
+  var speed = 260; // px/sec for keyboard nudge
+  if (keys.ArrowLeft) target.x -= speed * dt;
+  if (keys.ArrowRight) target.x += speed * dt;
+  if (keys.ArrowUp) target.y -= speed * dt;
+  if (keys.ArrowDown) target.y += speed * dt;
+  target.x = clamp(target.x, 0, W);
+  target.y = clamp(target.y, 0, H);
+
+  var lag = 0.25;
+  var px = pos.x, py = pos.y;
+  pos.x += (target.x - pos.x) * lag;
+  pos.y += (target.y - pos.y) * lag;
+
+  var dx = pos.x - px, dy = pos.y - py;
+  var d = Math.hypot(dx, dy);
+  if (d > 0.05) {
+    lastAngle = Math.atan2(dy, dx);
+    totalDistance += d;
+    punchHole(pos.x, pos.y);
+    trail.push({ x: pos.x, y: pos.y, dist: totalDistance });
+    if (trail.length > 50) trail.shift();
+    updateHUD();
+  }
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(imgCanvas, 0, 0);
+  ctx.drawImage(maskCanvas, 0, 0);
+  drawTrail();
+  drawUnicorn(pos, lastAngle);
+}
+
+function loop(t) {
+  var dt = last ? Math.min((t - last) / 1000, 0.05) : 0;
+  last = t;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+loadRound(0);
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
