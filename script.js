@@ -3,145 +3,137 @@
 
 var W = 480, H = 480;
 
-// ---- randomized tiled background (sits behind the canvas) ----
-(function buildGrassBackground() {
-  var TILE = 16, GRID = 12; // 12x12 cells -> 192x192 composite, randomized per cell
-  var sources = [
-    'public/grass-tile-1.png',
-    'public/grass-tile-2.png',
-    'public/grass-tile-3.png',
-    'public/grass-tile-4.png'
-  ];
-  var tiles = [];
-  var loaded = 0;
-  sources.forEach(function (src, i) {
-    var img = new Image();
-    img.onload = function () {
-      loaded++;
-      if (loaded === sources.length) composite();
-    };
-    img.src = src;
-    tiles[i] = img;
-  });
-
-  function composite() {
-    var c = document.createElement('canvas');
-    c.width = c.height = TILE * GRID;
-    var cx = c.getContext('2d');
-    for (var y = 0; y < GRID; y++) {
-      for (var x = 0; x < GRID; x++) {
-        var tile = tiles[Math.floor(Math.random() * tiles.length)];
-        cx.drawImage(tile, x * TILE, y * TILE);
-      }
-    }
-    var size = TILE * GRID * 2; // 2x pixel scale to match the rest of the game's art
-    try {
-      document.body.style.backgroundImage = 'url(' + c.toDataURL('image/png') + ')';
-      document.body.style.backgroundSize = size + 'px ' + size + 'px';
-    } catch (e) {
-      // opened as file:// - canvas readback is blocked (tainted canvas).
-      // fall back to one plain repeating tile instead of leaving the page dark.
-      var fallback = sources[Math.floor(Math.random() * sources.length)];
-      document.body.style.backgroundImage = 'url(' + fallback + ')';
-      document.body.style.backgroundSize = (TILE * 2) + 'px ' + (TILE * 2) + 'px';
-    }
-  }
-})();
-
-// ---- procedural hidden-image authoring helpers ----
-function star(cx, cy, rOuter, rInner, points, color) {
-  var d = [], i, ang, r, x, y;
-  for (i = 0; i < points * 2; i++) {
-    ang = -Math.PI / 2 + i * Math.PI / points;
-    r = (i % 2 === 0) ? rOuter : rInner;
-    x = cx + r * Math.cos(ang);
-    y = cy + r * Math.sin(ang);
-    d.push([i === 0 ? 'M' : 'L', x, y]);
-  }
-  d.push(['Z']);
-  return { t: 'p', c: color, d: d };
-}
-
 var IMAGES = [
-  {
-    name: 'star',
-    accepted: ['star', 'stars'],
-    shapes: [ star(240, 240, 150, 62, 5, '#ffd23f') ]
-  },
-  {
-    name: 'cloud',
-    accepted: ['cloud', 'clouds'],
-    shapes: [{
-      t: 'c', c: '#dce8f7',
-      d: [[170,260,55],[230,225,65],[300,225,60],[345,260,48],[255,290,75],[160,290,40]]
-    }]
-  },
-  {
-    name: 'rainbow',
-    accepted: ['rainbow', 'rainbows'],
-    shapes: [
-      { t:'a', c:'#ff4d4d', cx:240, cy:430, r:220, a0:Math.PI, a1:2*Math.PI, w:26 },
-      { t:'a', c:'#ff9f43', cx:240, cy:430, r:193, a0:Math.PI, a1:2*Math.PI, w:26 },
-      { t:'a', c:'#ffe74c', cx:240, cy:430, r:166, a0:Math.PI, a1:2*Math.PI, w:26 },
-      { t:'a', c:'#3ddc84', cx:240, cy:430, r:139, a0:Math.PI, a1:2*Math.PI, w:26 },
-      { t:'a', c:'#4d94ff', cx:240, cy:430, r:112, a0:Math.PI, a1:2*Math.PI, w:26 },
-      { t:'a', c:'#a04dff', cx:240, cy:430, r:85,  a0:Math.PI, a1:2*Math.PI, w:26 }
-    ]
-  },
-  {
-    name: 'horn',
-    accepted: ['horn', 'horns', 'unicornhorn'],
-    shapes: [{
-      t: 'p', c: '#f4c95d',
-      d: [
-        ['M', 240, 60],
-        ['C', 255, 150, 260, 300, 270, 420],
-        ['L', 210, 420],
-        ['C', 220, 300, 225, 150, 240, 60],
-        ['Z']
-      ]
-    }]
-  },
-  {
-    name: 'horseshoe',
-    accepted: ['horseshoe', 'horseshoes', 'shoe'],
-    shapes: [
-      { t:'a', c:'#d8d8d8', cx:240, cy:260, r:120, a0:-0.785, a1:3.927, w:50 }
-    ]
-  }
+  {name:'anchor',c:'#ff4d4d',icon:[['d','M12 6v16'],['d','m19 13 2-1a9 9 0 0 1-18 0l2 1'],['d','M9 11h6'],['c',12,4,2]]},
+  {name:'apple',c:'#ff9f43',icon:[['d','M12 7V3a1 1 0 0 1 1-1h0'],['d','M18 21A15 15 0 0 0 22 11a6 6 0 0 0-10-4A6 6 0 0 0 2 11a15 15 0 0 0 4 10 3 3 0 0 0 4 1 6 6 0 0 1 5 0A3 3 0 0 0 18 21']]},
+  {name:'award',c:'#ffe74c',icon:[['d','m15 13 2 9a1 1 0 0 1-1 1l-4-3a1 1 0 0 0-1 0l-4 3a1 1 0 0 1-1-1l2-9'],['c',12,8,6]]},
+  {name:'banana',c:'#3ddc84',icon:[['d','M4 13c4-2 8-2 10 2a6 6 0 0 1 8 5'],['d','M5 18c6-2 9-7 7-12C12 4 12 2 13 2c3 0 5 6 5 8 0 6-4 12-10 12C5 22 2 22 2 20c0-2 1-2 3-2Z']]},
+  {name:'battery',c:'#4d94ff',icon:[['d','M 22 14 L 22 10'],['r',2,6,16,12]]},
+  {name:'beer',c:'#a04dff',icon:[['d','M17 11h1a3 3 0 0 1 0 6h-1'],['d','M9 12v6'],['d','M13 12v6'],['d','M14 8c-1 0-1 1-3 1s-2-1-3-1-2 1-2 1a2 2 0 0 1 0-5c1 0 2 1 2 1S9 2 11 2s2 2 3 2 2-1 2-1a2 2 0 0 1 0 5c-1 0-2-1-2-1Z'],['d','M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8']]},
+  {name:'bell',c:'#f4c95d',icon:[['d','M10 21a2 2 0 0 0 3 0'],['d','M3 15A1 1 0 0 0 4 17h16a1 1 0 0 0 1-2C19 14 18 12 18 8A6 6 0 0 0 6 8c0 4-1 6-3 7']]},
+  {name:'bike',c:'#ff6ec7',icon:[['d','M12 18V14l-3-3 4-3 2 3h2'],['c',18,18,4],['c',6,18,4],['c',15,5,1]]},
+  {name:'bird',c:'#4dd0e1',icon:[['d','M16 7h1'],['d','M3 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7-2L2 20'],['d','m20 7 2 1-2 1'],['d','M10 18v3'],['d','M14 18V21'],['d','M7 18a6 6 0 0 0 4-11']]},
+  {name:'bone',c:'#8bc34a',icon:[['d','M17 10c1-1 2 0 2 0a2 2 0 1 0 0-5 1 1 0 0 1-1-1 2 2 0 1 0-5 0c0 1 1 2 0 2l-7 7c-1 1-2 0-2 0a2 2 0 0 0 0 5c1 0 1 1 1 1a2 2 0 1 0 5 0c0-1-1-2 0-2Z']]},
+  {name:'book',c:'#ff4d4d',icon:[['d','M4 20v-15A2 2 0 0 1 6 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6a1 1 0 0 1 0-5H20']]},
+  {name:'brush',c:'#ff9f43',icon:[['d','m11 10 3 3'],['d','M6 21A4 4 0 1 0 3 18a3 3 0 0 1-1 2A1 1 0 0 0 3 21z'],['d','M10 17 21 6a1 1 0 0 0-3-3L7 14']]},
+  {name:'bus',c:'#ffe74c',icon:[['d','M8 6v6'],['d','M15 6v6'],['d','M2 12h20'],['d','M18 18h3s1-2 1-3c1-1 1-1 1-1 0-1-1-1-1-1l-1-5C20 7 19 6 18 6H4a2 2 0 0 0-2 2v10h3'],['d','M9 18h5'],['c',7,18,2],['c',16,18,2]]},
+  {name:'cake',c:'#3ddc84',icon:[['d','M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8'],['d','M4 16s1-1 2-1 2 2 4 2 2-2 4-2 2 2 4 2 2-1 2-1'],['d','M2 21h20'],['d','M7 8v3'],['d','M12 8v3'],['d','M17 8v3'],['d','M7 4h1'],['d','M12 4h1'],['d','M17 4h1']]},
+  {name:'camera',c:'#4d94ff',icon:[['d','M14 4a2 2 0 0 1 2 1l1 1A2 2 0 0 0 18 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2a2 2 0 0 0 2-1l1-1A2 2 0 0 1 10 4z'],['c',12,13,3]]},
+  {name:'car',c:'#a04dff',icon:[['d','M19 17h2c1 0 1-1 1-1v-3c0-1-1-2-2-2C19 11 16 10 16 10s-1-1-2-2c-1-1-1-1-2-1H5c-1 0-1 1-1 1l-1 3A4 4 0 0 0 2 12v4c0 1 1 1 1 1h2'],['d','M9 17h6'],['c',7,17,2],['c',17,17,2]]},
+  {name:'carrot',c:'#f4c95d',icon:[['d','M15 16a1 1 0 0 0-7-7q-4 4-6 12a1 1 0 0 0 1 1Q11 20 15 16l-3-3'],['d','M15 9q4 4 7 0-3-4-7 0 4-4 0-7-4 3 0 7'],['d','m8 15-3-3']]},
+  {name:'cherry',c:'#ff6ec7',icon:[['d','M2 17a5 5 0 0 0 10 0c0-3-2-5-5-3-2-2-5 1-5 3Z'],['d','M12 17a5 5 0 0 0 10 0c0-3-2-5-5-3-2-2-5 1-5 3Z'],['d','M7 14c3-3 4-9 5-12 2 2 5 9 5 12'],['d','M22 9c-4 0-7-2-10-7 6 0 10 5 10 7Z']]},
+  {name:'clock',c:'#4dd0e1',icon:[['d','M12 6v6l4 2'],['c',12,12,10]]},
+  {name:'cloud',c:'#8bc34a',icon:[['d','M18 19H9a7 7 0 1 1 7-9h2a4 4 0 1 1 0 9Z']]},
+  {name:'coffee',c:'#ff4d4d',icon:[['d','M10 2v2'],['d','M14 2v2'],['d','M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1'],['d','M6 2v2']]},
+  {name:'cookie',c:'#ff9f43',icon:[['d','M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5'],['d','M8 8v1'],['d','M16 16v1'],['d','M12 12v1'],['d','M11 17v1'],['d','M7 14v1']]},
+  {name:'crown',c:'#ffe74c',icon:[['d','M12 3a1 1 0 0 1 1 0L15 9a1 1 0 0 0 2 1L21 6a1 1 0 0 1 1 1l-3 10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1L2 6a1 1 0 0 1 1-1l4 4a1 1 0 0 0 2-1z'],['d','M5 21h14']]},
+  {name:'diamond',c:'#3ddc84',icon:[['d','M3 10a2 2 0 0 0 0 3l8 8a2 2 0 0 0 3 0l8-8a2 2 0 0 0 0-3l-8-8a2 2 0 0 0-3 0Z']]},
+  {name:'dices',c:'#4d94ff',icon:[['d','m18 14 4-4a2 2 0 0 0 0-3l-5-5a2 2 0 0 0-3 0L10 6'],['d','M6 18h1'],['d','M10 14h1'],['d','M15 6h1'],['d','M18 9h1'],['r',2,10,12,12]]},
+  {name:'droplet',c:'#a04dff',icon:[['d','M12 22a7 7 0 0 0 7-7c0-2-1-4-3-6s-4-4-4-6c-1 2-2 5-4 6C6 11 5 13 5 15a7 7 0 0 0 7 7z']]},
+  {name:'ear',c:'#f4c95d',icon:[['d','M6 8a6 6 0 1 1 13 0c0 6-6 6-6 10a4 4 0 1 1-7 0'],['d','M15 8a2 2 0 0 0-5 0v1a2 2 0 1 1 0 4']]},
+  {name:'egg',c:'#ff6ec7',icon:[['d','M12 2C8 2 4 8 4 14a8 8 0 0 0 16 0c0-6-4-12-8-12']]},
+  {name:'eye',c:'#4dd0e1',icon:[['d','M2 12a1 1 0 0 1 0-1 11 11 0 0 1 20 0 1 1 0 0 1 0 1 11 11 0 0 1-20 0'],['c',12,12,3]]},
+  {name:'feather',c:'#8bc34a',icon:[['d','M14 18A2 2 0 113 19H5v-8a2 2 0 2-1L12 4a6 6 0 118 8z'],['d','M16 8 2 22'],['d','M17 15H9']]},
+  {name:'film',c:'#ff4d4d',icon:[['d','M7 3v18'],['d','M3 8h4'],['d','M3 12h18'],['d','M3 16h4'],['d','M17 3v18'],['d','M17 8h4'],['d','M17 16h4'],['r',3,3,18,18]]},
+  {name:'flag',c:'#ff9f43',icon:[['d','M4 22V4a1 1 0 0 1 1-1A6 6 0 0 1 8 2c3 0 5 2 7 2q2 0 3-1A1 1 0 0 1 20 4v10a1 1 0 0 1-1 1A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 2']]},
+  {name:'flame',c:'#ffe74c',icon:[['d','M12 3q1 4 4 6t3 6a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-2-3-2-5q0-2 2-4']]},
+  {name:'flower',c:'#3ddc84',icon:[['d','M12 16A4 4 0 1 1 8 12 4 4 0 1 1 12 8a4 4 0 1 1 4 4 4 4 0 1 1-4 4'],['d','M12 8V9'],['d','M8 12H9'],['d','M16 12H15'],['d','M12 16V15'],['d','m8 8 2 2'],['d','M14 10 16 8'],['d','m8 16 2-2'],['d','M14 14 16 16'],['c',12,12,3]]},
+  {name:'gem',c:'#4d94ff',icon:[['d','M10 3 8 9l4 13 4-13-2-6'],['d','M17 3a2 2 0 0 1 2 1l3 4a2 2 0 0 1 1 2l-8 11a2 2 0 0 1-3 0l-8-11A2 2 0 0 1 2 8l3-4A2 2 0 0 1 7 3z'],['d','M2 9h20']]},
+  {name:'ghost',c:'#a04dff',icon:[['d','M9 10h1'],['d','M15 10h1'],['d','M12 2a8 8 0 0 0-8 8v12l3-3 2 2L12 19l2 2L17 19l3 3V10a8 8 0 0 0-8-8z']]},
+  {name:'gift',c:'#f4c95d',icon:[['d','M12 7v14'],['d','M20 11v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8'],['d','M8 7a1 1 0 0 1 0-5A5 8 0 0 1 12 7a5 8 0 0 1 4-5 1 1 0 0 1 0 5'],['r',3,7,18,4]]},
+  {name:'glasses',c:'#ff6ec7',icon:[['d','M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2'],['d','M2 13 5 7c1-1 1-2 3-2'],['d','M22 13 19 7c-1-1-2-2-3-2'],['c',6,15,4],['c',18,15,4]]},
+  {name:'grape',c:'#4dd0e1',icon:[['d','M22 5V2l-6 6'],['c',17,16,3],['c',8,7,3],['c',12,12,3],['c',14,6,3],['c',18,10,3],['c',7,13,3],['c',11,17,3],['c',5,19,3]]},
+  {name:'hammer',c:'#8bc34a',icon:[['d','m15 12-9 9a1 1 0 0 1-3-3L12 9'],['d','m18 15 4-4'],['d','m22 12-2-2A2 2 0 0 1 19 8v-1a2 2 0 0 0-1-1l-2-2A6 6 0 0 0 13 3H9l1 1A6 6 0 0 1 12 8V10l2 2h1a2 2 0 0 1 1 1L18 14']]},
+  {name:'hand',c:'#ff4d4d',icon:[['d','M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2'],['d','M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2'],['d','M10 10V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8'],['d','M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-3 0-4-1-6-2l-4-4a2 2 0 0 1 3-3L7 15']]},
+  {name:'headphones',c:'#ff9f43',icon:[['d','M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3']]},
+  {name:'heart',c:'#ffe74c',icon:[['d','M2 10a6 6 0 0 1 10-4 1 1 0 0 0 1 0A5 5 0 0 1 22 10c0 2-2 4-3 6l-5 5a2 2 0 0 1-3 1L5 15c-2-2-3-3-3-6']]},
+  {name:'house',c:'#3ddc84',icon:[['d','M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8'],['d','M3 10a2 2 0 0 1 1-2l7-6a2 2 0 0 1 3 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z']]},
+  {name:'image',c:'#4d94ff',icon:[['d','m21 15-3-3a2 2 0 0 0-3 0L6 21'],['c',9,9,2],['r',3,3,18,18]]},
+  {name:'key',c:'#a04dff',icon:[['d','m16 8 2 2a1 1 0 0 0 1 0l2-2a1 1 0 0 0 0-1L19 4'],['d','m21 2-10 10'],['c',8,16,6]]},
+  {name:'keyboard',c:'#f4c95d',icon:[['d','M10 8h1'],['d','M12 12h1'],['d','M14 8h1'],['d','M16 12h1'],['d','M18 8h1'],['d','M6 8h1'],['d','M7 16h10'],['d','M8 12h1'],['r',2,4,20,16]]},
+  {name:'leaf',c:'#ff6ec7',icon:[['d','M11 20A7 7 0 0 1 10 6C16 5 17 4 19 2c1 2 2 4 2 8 0 6-5 10-10 10Z'],['d','M2 21c0-3 2-5 5-6C10 15 12 13 13 12']]},
+  {name:'lightbulb',c:'#4dd0e1',icon:[['d','M15 14c1-1 1-2 2-2 1-1 2-2 2-4A6 6 0 0 0 6 8c0 1 1 2 2 4 1 1 1 2 2 2'],['d','M9 18h6'],['d','M10 22h4']]},
+  {name:'lock',c:'#8bc34a',icon:[['d','M7 11V7a5 5 0 0 1 10 0v4'],['r',3,11,18,11]]},
+  {name:'mail',c:'#ff4d4d',icon:[['d','m22 7-9 6a2 2 0 0 1-2 0L2 7'],['r',2,4,20,16]]},
+  {name:'map',c:'#ff9f43',icon:[['d','M14 6a2 2 0 0 0 2 0l4-2A1 1 0 0 1 21 5v13a1 1 0 0 1-1 1l-5 2a2 2 0 0 1-2 0l-4-2a2 2 0 0 0-2 0l-4 2A1 1 0 0 1 3 19V7a1 1 0 0 1 1-1l5-2a2 2 0 0 1 2 0z'],['d','M15 6v15'],['d','M9 3v15']]},
+  {name:'milk',c:'#ffe74c',icon:[['d','M8 2h8'],['d','M9 2v3a4 4 0 0 1-1 2l-1 1A4 4 0 0 0 7 10V20a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-10a4 4 0 0 0-1-2l-1-1A4 4 0 0 1 15 5V2'],['d','M7 15a6 6 0 0 1 5 0 6 6 0 0 0 5 0']]},
+  {name:'monitor',c:'#3ddc84',icon:[['r',2,3,20,14],['l',8,21,16,21],['l',12,17,12,21]]},
+  {name:'moon',c:'#4d94ff',icon:[['d','M21 12a9 9 0 1 1-9-9c1-1 1 1 1 1a6 6 0 0 0 8 8c1-1 1-1 1 1']]},
+  {name:'mountain',c:'#a04dff',icon:[['d','m8 3 4 8 5-5 5 15H2L8 3z']]},
+  {name:'mouse',c:'#f4c95d',icon:[['d','M12 6v4'],['r',5,2,14,20]]},
+  {name:'music',c:'#ff6ec7',icon:[['d','M9 18V5l12-2v13'],['c',6,18,3],['c',18,16,3]]},
+  {name:'pen',c:'#4dd0e1',icon:[['d','M21 7a1 1 0 0 0-4-4L4 16a2 2 0 0 0-1 1l-1 4a1 1 0 0 0 1 1l4-1a2 2 0 0 0 1-1z']]},
+  {name:'pencil',c:'#8bc34a',icon:[['d','M21 7a1 1 0 0 0-4-4L4 16a2 2 0 0 0-1 1l-1 4a1 1 0 0 0 1 1l4-1a2 2 0 0 0 1-1z'],['d','m15 5 4 4']]},
+  {name:'phone',c:'#ff4d4d',icon:[['d','M14 17a1 1 0 0 0 1-1l1-1A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-1 2l-1 1a1 1 0 0 0-1 1 14 14 0 0 0 6 6']]},
+  {name:'pill',c:'#ff9f43',icon:[['d','m10 20 10-10a5 5 0 1 0-7-7l-10 10a5 5 0 1 0 7 7Z'],['d','m8 8 7 7']]},
+  {name:'pizza',c:'#ffe74c',icon:[['d','m12 14-1 1'],['d','m14 18-1 1'],['d','M18 6a16 16 0 0 0-12 12'],['d','M19 9a1 1 0 0 0 2 8'],['d','M22 21a1 1 0 0 1-1 1l-18-5a1 1 0 0 1-1-1A20 20 0 0 1 16 2a1 1 0 0 1 1 1z']]},
+  {name:'plane',c:'#3ddc84',icon:[['d','M18 19 16 11l4-4C21 6 22 4 21 3c-1-1-3 0-4 2L13 8 5 6c-1-1-1 1-1 1l-1 1c-1 1-1 1 1 1L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 4 5c1 1 1 1 1 1l1-1c1-1 1-1 1-1z']]},
+  {name:'plug',c:'#4d94ff',icon:[['d','M12 22v-5'],['d','M15 8V2'],['d','M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z'],['d','M9 8V2']]},
+  {name:'popcorn',c:'#a04dff',icon:[['d','M18 8a2 2 0 0 0 0-4 2 2 0 0 0-4 0 2 2 0 0 0-4 0 2 2 0 0 0-4 0 2 2 0 0 0 0 4'],['d','M10 22 9 8'],['d','m14 22 1-14'],['d','M20 8c1 0 1 1 1 1l-3 12c-1 1-1 1-1 1H7c-1 0-1-1-1-1L3 9c-1-1 1-1 1-1Z']]},
+  {name:'printer',c:'#f4c95d',icon:[['d','M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2'],['d','M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6'],['r',6,14,12,8]]},
+  {name:'radio',c:'#ff6ec7',icon:[['d','M16 8a6 6 0 0 1 0 8'],['d','M19 5a10 10 0 0 1 0 14'],['d','M5 19a10 10 0 0 1 0-14'],['d','M8 16a6 6 0 0 1 0-8'],['c',12,12,2]]},
+  {name:'rainbow',c:'#4dd0e1',icon:[['d','M22 17a10 10 0 0 0-20 0'],['d','M6 17a6 6 0 0 1 12 0'],['d','M10 17a2 2 0 0 1 4 0']]},
+  {name:'sailboat',c:'#8bc34a',icon:[['d','M10 2v15'],['d','M7 22a4 4 0 0 1-4-4 1 1 0 0 1 1-1h16a1 1 0 0 1 1 1 4 4 0 0 1-4 4z'],['d','M9 2a1 1 0 0 1 2-1l10 9A1 1 0 0 1 20 13H4a1 1 0 0 1-1-2z']]},
+  {name:'sandwich',c:'#ff4d4d',icon:[['d','m2 11 8-7a2 2 0 0 1 3 0l8 7'],['d','M21 15a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-5'],['d','M3 15a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h9'],['d','m7 15 6 5a2 2 0 0 0 3-1l3-4'],['r',2,11,20,4]]},
+  {name:'scissors',c:'#ff9f43',icon:[['d','M8 8 12 12'],['d','M20 4 8 16'],['d','M15 15 20 20'],['c',6,6,3],['c',6,18,3]]},
+  {name:'shirt',c:'#ffe74c',icon:[['d','M20 3 16 2a4 4 0 0 1-8 0L4 3a2 2 0 0 0-1 2l1 3a1 1 0 0 0 1 1H6v10c0 1 1 2 2 2h8a2 2 0 0 0 2-2V10h2a1 1 0 0 0 1-1l1-3a2 2 0 0 0-1-2z']]},
+  {name:'skull',c:'#3ddc84',icon:[['d','m12 17-1-1-1 1h1z'],['d','M15 22a1 1 0 0 0 1-1v-1a2 2 0 0 0 2-3 8 8 0 1 0-11 0A2 2 0 0 0 8 20v1a1 1 0 0 0 1 1z'],['c',15,12,1],['c',9,12,1]]},
+  {name:'speaker',c:'#4d94ff',icon:[['d','M12 6h1'],['d','M12 14h1'],['c',12,14,4],['r',4,2,16,20]]},
+  {name:'star',c:'#a04dff',icon:[['d','M12 2a1 1 0 0 1 1 0l2 5a2 2 0 0 0 2 1l5 1a1 1 0 0 1 1 1l-4 4a2 2 0 0 0-1 2l1 5a1 1 0 0 1-1 1l-5-2a2 2 0 0 0-2 0L6 21a1 1 0 0 1-1-1l1-5a2 2 0 0 0-1-2L2 10a1 1 0 0 1 1-1l5-1a2 2 0 0 0 2-1z']]},
+  {name:'sun',c:'#f4c95d',icon:[['d','M12 2v2'],['d','M12 20v2'],['d','m5 5 1 1'],['d','m18 18 1 1'],['d','M2 12h2'],['d','M20 12h2'],['d','m6 18-1 1'],['d','m19 5-1 1'],['c',12,12,4]]},
+  {name:'target',c:'#ff6ec7',icon:[['c',12,12,10],['c',12,12,6],['c',12,12,2]]},
+  {name:'tent',c:'#4dd0e1',icon:[['d','M4 21 14 3'],['d','M20 21 10 3'],['d','M16 21 12 15l-4 6'],['d','M2 21h20']]},
+  {name:'thermometer',c:'#8bc34a',icon:[['d','M14 4v11a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z']]},
+  {name:'ticket',c:'#ff4d4d',icon:[['d','M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z'],['d','M13 5v2'],['d','M13 17v2'],['d','M13 11v2']]},
+  {name:'train-front',c:'#ff9f43',icon:[['d','M8 3V7a4 4 0 0 0 8 0V3'],['d','m9 15-1-1'],['d','m15 15 1-1'],['d','M9 19c-3 0-5-2-5-5v-4a8 8 0 0 1 16 0v4c0 3-2 5-5 5Z'],['d','m8 19-2 3'],['d','m16 19 2 3']]},
+  {name:'trash',c:'#ffe74c',icon:[['d','M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'],['d','M3 6h18'],['d','M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2']]},
+  {name:'truck',c:'#3ddc84',icon:[['d','M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2'],['d','M15 18H9'],['d','M19 18h2a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1l-3-4A1 1 0 0 0 18 8H14'],['c',17,18,2],['c',7,18,2]]},
+  {name:'tv',c:'#4d94ff',icon:[['d','m17 2-5 5-5-5'],['r',2,7,20,15]]},
+  {name:'umbrella',c:'#a04dff',icon:[['d','M12 13v7a2 2 0 0 0 4 0'],['d','M12 2v2'],['d','M21 13a1 1 0 0 0 1-1 10 10 0 0 0-20 0A1 1 0 0 0 3 13z']]},
+  {name:'video',c:'#f4c95d',icon:[['d','m16 13 5 3a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1L16 10'],['r',2,6,14,12]]},
+  {name:'wallet',c:'#ff6ec7',icon:[['d','M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1'],['d','M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4']]},
+  {name:'watch',c:'#4dd0e1',icon:[['d','M12 10v2l2 1'],['d','m16 8-1-4a2 2 0 0 0-2-2h-3a2 2 0 0 0-2 2l-1 4'],['d','m8 16 1 4a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2l1-4'],['c',12,12,6]]},
+  {name:'wifi',c:'#8bc34a',icon:[['d','M12 20h1'],['d','M2 9a15 15 0 0 1 20 0'],['d','M5 13a10 10 0 0 1 14 0'],['d','M8 16a5 5 0 0 1 7 0']]},
+  {name:'wine',c:'#ff4d4d',icon:[['d','M8 22h8'],['d','M7 10h10'],['d','M12 15v7'],['d','M12 15a5 5 0 0 0 5-5c0-2-1-4-2-8H9c-2 4-2 6-2 8a5 5 0 0 0 5 5Z']]},
+  {name:'sword',c:'#ff9f43',icon:[['d','m11 19-6-6'],['d','m5 21-2-2'],['d','m8 16-4 4'],['d','M10 18 21 6V3h-3L6 14']]},
+  {name:'globe',c:'#ffe74c',icon:[['d','M12 2a14 14 0 0 0 0 20 14 14 0 0 0 0-20'],['d','M2 12h20'],['c',12,12,10]]},
+  {name:'wind',c:'#3ddc84',icon:[['d','M13 20A2 2 0 1 0 14 16H2'],['d','M18 8a2 2 0 1 1 2 4H2'],['d','M10 4A2 2 0 1 1 11 8H2']]},
+  {name:'archive',c:'#4d94ff',icon:[['d','M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8'],['d','M10 12h4'],['r',2,3,20,5]]},
+  {name:'paperclip',c:'#a04dff',icon:[['d','m16 6-8 9a2 2 0 0 0 3 3l8-9a4 4 0 1 0-6-6l-8 9a6 6 0 1 0 8 8l8-9']]},
+  {name:'folder',c:'#f4c95d',icon:[['d','M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8a2 2 0 0 1-2-1L10 4A2 2 0 0 0 8 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z']]},
+  {name:'compass',c:'#ff6ec7',icon:[['d','m16 8-2 5a2 2 0 0 1-1 1L8 16l2-5a2 2 0 0 1 1-1z'],['c',12,12,10]]},
+  {name:'wrench',c:'#4dd0e1',icon:[['d','M15 6a1 1 0 0 0 0 1l2 2a1 1 0 0 0 1 0l3-3c1-1 1-1 1 1a6 6 0 0 1-8 7l-8 8a1 1 0 0 1-3-3l8-8a6 6 0 0 1 7-8c1 1 1 1 1 1z']]},
+  {name:'joystick',c:'#8bc34a',icon:[['d','M21 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2Z'],['d','M6 15v-2'],['d','M12 15V9'],['c',12,6,3]]}
 ];
 
-function drawShape(ctx, s) {
-  ctx.beginPath();
-  if (s.t === 'p') {
-    for (var i = 0; i < s.d.length; i++) {
-      var cmd = s.d[i], op = cmd[0];
-      if (op === 'M') ctx.moveTo(cmd[1], cmd[2]);
-      else if (op === 'L') ctx.lineTo(cmd[1], cmd[2]);
-      else if (op === 'C') ctx.bezierCurveTo(cmd[1],cmd[2],cmd[3],cmd[4],cmd[5],cmd[6]);
-      else if (op === 'Q') ctx.quadraticCurveTo(cmd[1],cmd[2],cmd[3],cmd[4]);
-      else if (op === 'Z') ctx.closePath();
+function drawIcon(ctx, icon, color) {
+  ctx.save();
+  ctx.translate(90, 90);
+  ctx.scale(12.5, 12.5);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (var i = 0; i < icon.length; i++) {
+    var p = icon[i];
+    if (p[0] === 'd') {
+      ctx.stroke(new Path2D(p[1]));
+    } else if (p[0] === 'c') {
+      ctx.beginPath();
+      ctx.arc(p[1], p[2], p[3], 0, 6.2832);
+      ctx.stroke();
+    } else if (p[0] === 'r') {
+      ctx.strokeRect(p[1], p[2], p[3], p[4]);
+    } else if (p[0] === 'l') {
+      ctx.beginPath();
+      ctx.moveTo(p[1], p[2]);
+      ctx.lineTo(p[3], p[4]);
+      ctx.stroke();
     }
-    ctx.fillStyle = s.c;
-    ctx.fill();
-  } else if (s.t === 'c') {
-    ctx.fillStyle = s.c;
-    for (var j = 0; j < s.d.length; j++) {
-      var circ = s.d[j];
-      ctx.moveTo(circ[0] + circ[2], circ[1]);
-      ctx.arc(circ[0], circ[1], circ[2], 0, Math.PI * 2);
-    }
-    ctx.fill();
-  } else if (s.t === 'a') {
-    ctx.strokeStyle = s.c;
-    ctx.lineWidth = s.w;
-    ctx.lineCap = 'round';
-    ctx.arc(s.cx, s.cy, s.r, s.a0, s.a1);
-    ctx.stroke();
   }
+  ctx.restore();
 }
 
-// ---- setup canvases ----
 var canvas = document.createElement('canvas');
 canvas.width = W; canvas.height = H;
 document.getElementById('app').insertBefore(canvas, document.getElementById('hint'));
@@ -163,7 +155,6 @@ var unicornReady = false;
 unicornSprite.onload = function () { unicornReady = true; };
 unicornSprite.src = 'public/unicorn-sprite.png';
 
-// ---- game state ----
 var currentImageIdx = 0;
 var roundNumber = 0; // 1-indexed once first round loads
 var deck = []; // shuffled queue of image indices, refilled when empty
@@ -203,7 +194,6 @@ function showToast(text, kind) {
   toastTimer = setTimeout(function () { toast.className = ''; }, 1600);
 }
 
-// ---- sfx (procedural Web Audio, no audio files) ----
 var audioCtx = null;
 function ensureAudio() {
   if (!audioCtx) {
@@ -300,8 +290,8 @@ function loadRound() {
   lastShownIdx = currentImageIdx;
   roundNumber += 1;
   imgCtx.clearRect(0, 0, W, H);
-  var shapes = IMAGES[currentImageIdx].shapes;
-  for (var k = 0; k < shapes.length; k++) drawShape(imgCtx, shapes[k]);
+  var img = IMAGES[currentImageIdx];
+  drawIcon(imgCtx, img.icon, img.c);
   maskCtx.globalCompositeOperation = 'source-over';
   maskCtx.fillStyle = '#000';
   maskCtx.fillRect(0, 0, W, H);
@@ -355,9 +345,7 @@ function closeGuess() {
 }
 function submitGuess() {
   var val = normalize(guessInput.value);
-  var accepted = IMAGES[currentImageIdx].accepted;
-  var ok = false;
-  for (var i = 0; i < accepted.length; i++) if (normalize(accepted[i]) === val) ok = true;
+  var ok = normalize(IMAGES[currentImageIdx].name) === val;
   closeGuess();
   if (ok) {
     playCorrect();
@@ -404,7 +392,6 @@ function startGame() {
   playNeigh();
 }
 
-// ---- input ----
 function canvasPoint(clientX, clientY) {
   var r = canvas.getBoundingClientRect();
   return {
@@ -451,7 +438,6 @@ document.getElementById('skipTutorial').addEventListener('click', function (e) {
   }
 });
 
-// ---- unicorn rendering ----
 function drawUnicorn(p) {
   if (!unicornReady) return;
   var f = Math.floor(Date.now() / UNICORN_FRAME_MS) % UNICORN_FRAMES;
@@ -512,7 +498,6 @@ function drawMoveHint() {
   ctx.restore();
 }
 
-// ---- loop ----
 var last = 0;
 function update(dt) {
   if (!gameStarted || gameOver || guessOpen) return;
