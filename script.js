@@ -3,6 +3,51 @@
 
 var W = 480, H = 480;
 
+// ---- randomized tiled background (sits behind the canvas) ----
+(function buildGrassBackground() {
+  var TILE = 16, GRID = 12; // 12x12 cells -> 192x192 composite, randomized per cell
+  var sources = [
+    'public/grass-tile-1.png',
+    'public/grass-tile-2.png',
+    'public/grass-tile-3.png',
+    'public/grass-tile-4.png'
+  ];
+  var tiles = [];
+  var loaded = 0;
+  sources.forEach(function (src, i) {
+    var img = new Image();
+    img.onload = function () {
+      loaded++;
+      if (loaded === sources.length) composite();
+    };
+    img.src = src;
+    tiles[i] = img;
+  });
+
+  function composite() {
+    var c = document.createElement('canvas');
+    c.width = c.height = TILE * GRID;
+    var cx = c.getContext('2d');
+    for (var y = 0; y < GRID; y++) {
+      for (var x = 0; x < GRID; x++) {
+        var tile = tiles[Math.floor(Math.random() * tiles.length)];
+        cx.drawImage(tile, x * TILE, y * TILE);
+      }
+    }
+    var size = TILE * GRID * 2; // 2x pixel scale to match the rest of the game's art
+    try {
+      document.body.style.backgroundImage = 'url(' + c.toDataURL('image/png') + ')';
+      document.body.style.backgroundSize = size + 'px ' + size + 'px';
+    } catch (e) {
+      // opened as file:// - canvas readback is blocked (tainted canvas).
+      // fall back to one plain repeating tile instead of leaving the page dark.
+      var fallback = sources[Math.floor(Math.random() * sources.length)];
+      document.body.style.backgroundImage = 'url(' + fallback + ')';
+      document.body.style.backgroundSize = (TILE * 2) + 'px ' + (TILE * 2) + 'px';
+    }
+  }
+})();
+
 // ---- procedural hidden-image authoring helpers ----
 function star(cx, cy, rOuter, rInner, points, color) {
   var d = [], i, ang, r, x, y;
@@ -99,7 +144,7 @@ function drawShape(ctx, s) {
 // ---- setup canvases ----
 var canvas = document.createElement('canvas');
 canvas.width = W; canvas.height = H;
-document.getElementById('app').insertBefore(canvas, document.getElementById('hud'));
+document.getElementById('app').insertBefore(canvas, document.getElementById('hint'));
 var ctx = canvas.getContext('2d');
 
 var imgCanvas = document.createElement('canvas');
@@ -110,6 +155,14 @@ var maskCanvas = document.createElement('canvas');
 maskCanvas.width = W; maskCanvas.height = H;
 var maskCtx = maskCanvas.getContext('2d');
 
+var UNICORN_FRAME = 24;
+var UNICORN_FRAMES = 4;
+var UNICORN_FRAME_MS = 220;
+var unicornSprite = new Image();
+var unicornReady = false;
+unicornSprite.onload = function () { unicornReady = true; };
+unicornSprite.src = 'public/unicorn-sprite.png';
+
 // ---- game state ----
 var currentImageIdx = 0;
 var roundNumber = 0; // 1-indexed once first round loads
@@ -119,7 +172,7 @@ var lives = 3;
 var totalDistance = 0;
 var pos = { x: W/2, y: H/2 };
 var target = { x: W/2, y: H/2 };
-var lastAngle = 0;
+var facing = 1;
 var trail = [];
 var keys = {};
 var guessOpen = false;
@@ -128,12 +181,100 @@ var gameStarted = false;
 var hasMoved = false;
 
 var hud = document.getElementById('hud');
+var livesHud = document.getElementById('livesHud');
 var overlay = document.getElementById('overlay');
 var overlayText = document.getElementById('overlayText');
 var guessBox = document.getElementById('guessBox');
 var guessInput = document.getElementById('guessInput');
 var startOverlay = document.getElementById('startOverlay');
+var startDialogText = document.getElementById('startDialogText');
+var startBtn = document.getElementById('startBtn');
 var guessBtn = document.getElementById('guessBtn');
+var toast = document.getElementById('toast');
+
+var GOOD_MESSAGES = ['Awesome!', 'Great job!', 'Nailed it!', 'Brilliant!', "You've got it!"];
+var BAD_MESSAGES = ['So close, keep going!', "Don't give up!", 'Almost had it!', 'Try again, you can do it!'];
+var toastTimer = null;
+
+function showToast(text, kind) {
+  toast.textContent = text;
+  toast.className = 'show ' + kind;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { toast.className = ''; }, 1600);
+}
+
+// ---- sfx (procedural Web Audio, no audio files) ----
+var audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function beep(freq, dur, type, peak) {
+  var ctx = ensureAudio();
+  var osc = ctx.createOscillator();
+  var gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(peak, ctx.currentTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + dur);
+}
+function playCorrect() {
+  beep(523.25, 0.12, 'square', 0.15);
+  setTimeout(function () { beep(783.99, 0.15, 'square', 0.15); }, 90);
+}
+function playWrong() {
+  beep(196, 0.2, 'sawtooth', 0.15);
+}
+function playGameOver() {
+  beep(196, 0.15, 'sawtooth', 0.15);
+  setTimeout(function () { beep(130.81, 0.3, 'sawtooth', 0.15); }, 140);
+}
+function playClick() {
+  beep(880, 0.05, 'square', 0.08);
+}
+function playNeigh() {
+  var ctx = ensureAudio();
+  var now = ctx.currentTime;
+  var osc = ctx.createOscillator();
+  var gain = ctx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(300, now);
+  osc.frequency.linearRampToValueAtTime(720, now + 0.12);
+  osc.frequency.linearRampToValueAtTime(520, now + 0.24);
+  osc.frequency.linearRampToValueAtTime(660, now + 0.36);
+  osc.frequency.linearRampToValueAtTime(420, now + 0.5);
+  osc.frequency.linearRampToValueAtTime(180, now + 0.7);
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.18, now + 0.05);
+  gain.gain.setValueAtTime(0.18, now + 0.5);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.75);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.8);
+}
+
+var STORY_STEPS = [
+  { text: 'Long ago, a great <b>darkness</b> fell over the land, swallowing every picture, color, and shape into black.', cta: 'Next' },
+  { text: 'Out of the shadows came a lone <b>unicorn</b>, its mane burning with every color of the rainbow.', cta: 'Next' },
+  { text: 'Now it wanders the dark canvas, trailing rainbow light behind it &mdash; unveiling the pictures the darkness swallowed, one at a time.', cta: 'Next' }
+];
+var TUTORIAL_STEPS = [
+  { text: 'Use <b>WASD</b> or the <b>arrow keys</b> (touch-drag on mobile) to move your unicorn across the dark canvas &mdash; its glowing trail reveals a hidden picture underneath.', cta: 'Continue' },
+  { text: 'Press <b>Enter</b> or tap the <b>?</b> button to guess what it is.', cta: 'Continue' },
+  { text: 'You have <b>3 lives</b> &mdash; a wrong guess costs one. Guess right and a new picture loads. Fewer moves = better score.', cta: 'Start' }
+];
+var ALL_STEPS = STORY_STEPS.concat(TUTORIAL_STEPS);
+var tutorialStep = 0;
 
 function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 function normalize(s) { return s.trim().toLowerCase().replace(/[^a-z]/g, ''); }
@@ -184,8 +325,11 @@ function punchHole(x, y, radius) {
 
 function updateHUD() {
   var hearts = '';
-  for (var i = 0; i < 3; i++) hearts += (i < lives ? '♥' : '♡') + ' ';
-  hud.textContent = hearts + '  moves: ' + moves() + '  round: ' + roundNumber;
+  for (var i = 0; i < 3; i++) {
+    hearts += '<img src="public/life.png" class="life-icon' + (i < lives ? '' : ' lost') + '" alt="life">';
+  }
+  livesHud.innerHTML = hearts;
+  hud.textContent = 'moves: ' + moves() + '  round: ' + roundNumber;
 
   if (gameOver) {
     overlay.style.display = 'flex';
@@ -216,10 +360,13 @@ function submitGuess() {
   for (var i = 0; i < accepted.length; i++) if (normalize(accepted[i]) === val) ok = true;
   closeGuess();
   if (ok) {
+    playCorrect();
+    showToast(GOOD_MESSAGES[Math.floor(Math.random() * GOOD_MESSAGES.length)], 'good');
     loadRound();
   } else {
     lives -= 1;
-    if (lives <= 0) gameOver = true;
+    showToast(BAD_MESSAGES[Math.floor(Math.random() * BAD_MESSAGES.length)], 'bad');
+    if (lives <= 0) { gameOver = true; playGameOver(); } else { playWrong(); }
     updateHUD();
   }
 }
@@ -234,10 +381,27 @@ function restart() {
   loadRound();
 }
 
+function showTutorialStep(i) {
+  tutorialStep = i;
+  var step = ALL_STEPS[i];
+  startDialogText.innerHTML = step.text;
+  startBtn.textContent = step.cta;
+}
+
+function advanceTutorial() {
+  playClick();
+  if (tutorialStep < ALL_STEPS.length - 1) {
+    showTutorialStep(tutorialStep + 1);
+  } else {
+    startGame();
+  }
+}
+
 function startGame() {
   target.x = pos.x; target.y = pos.y;
   gameStarted = true;
   startOverlay.style.display = 'none';
+  playNeigh();
 }
 
 // ---- input ----
@@ -258,11 +422,12 @@ canvas.addEventListener('touchstart', function (e) { e.preventDefault(); }, { pa
 
 document.addEventListener('keydown', function (e) {
   if (e.key === 'Enter') {
-    if (!gameStarted) { startGame(); return; }
+    if (!gameStarted) { advanceTutorial(); return; }
     if (guessOpen) submitGuess(); else openGuess();
     return;
   }
   if (e.key === 'Escape' && guessOpen) { closeGuess(); return; }
+  if (e.key === 'Escape' && !gameStarted) { startGame(); return; }
   var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   keys[k] = true;
 });
@@ -275,43 +440,53 @@ guessBtn.addEventListener('click', function () {
   if (guessOpen) submitGuess(); else openGuess();
 });
 document.getElementById('restartBtn').addEventListener('click', restart);
-document.getElementById('startBtn').addEventListener('click', startGame);
+startBtn.addEventListener('click', advanceTutorial);
+document.getElementById('skipTutorial').addEventListener('click', function (e) {
+  e.preventDefault();
+  playClick();
+  if (tutorialStep < STORY_STEPS.length) {
+    showTutorialStep(STORY_STEPS.length);
+  } else {
+    startGame();
+  }
+});
 
 // ---- unicorn rendering ----
-function drawUnicorn(p, angle) {
+function drawUnicorn(p) {
+  if (!unicornReady) return;
+  var f = Math.floor(Date.now() / UNICORN_FRAME_MS) % UNICORN_FRAMES;
   ctx.save();
   ctx.translate(p.x, p.y);
-  ctx.rotate(angle);
-  ctx.beginPath();
-  ctx.moveTo(14, 0);
-  ctx.lineTo(-10, -8);
-  ctx.lineTo(-10, 8);
-  ctx.closePath();
-  ctx.fillStyle = '#fff';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(12, -3);
-  ctx.lineTo(22, -10);
-  ctx.strokeStyle = '#ffd23f';
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.stroke();
+  ctx.scale(facing, 1);
+  ctx.drawImage(unicornSprite, f * UNICORN_FRAME, 0, UNICORN_FRAME, UNICORN_FRAME,
+    -UNICORN_FRAME / 2, -UNICORN_FRAME / 2, UNICORN_FRAME, UNICORN_FRAME);
   ctx.restore();
 }
 
+var TRAIL_COLORS = ['#ff4d4d', '#ff9f43', '#ffe74c', '#3ddc84', '#4d94ff', '#a04dff'];
+var TRAIL_BAND_WIDTH = 3;
+
 function drawTrail() {
+  var bandSpan = TRAIL_BAND_WIDTH * (TRAIL_COLORS.length - 1);
   for (var i = 1; i < trail.length; i++) {
     var a = trail[i - 1], b = trail[i];
-    var hue = (b.dist * 0.6) % 360;
-    var alpha = i / trail.length;
-    ctx.strokeStyle = 'hsla(' + hue + ',90%,60%,' + (alpha * 0.9) + ')';
-    ctx.lineWidth = 4;
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var len = Math.hypot(dx, dy) || 1;
+    var nx = -dy / len, ny = dx / len;
+    var alpha = (i / trail.length) * 0.9;
+    ctx.lineWidth = TRAIL_BAND_WIDTH + 1;
     ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
+    for (var band = 0; band < TRAIL_COLORS.length; band++) {
+      var off = band * TRAIL_BAND_WIDTH - bandSpan / 2;
+      ctx.strokeStyle = TRAIL_COLORS[band];
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.moveTo(a.x + nx * off, a.y + ny * off);
+      ctx.lineTo(b.x + nx * off, b.y + ny * off);
+      ctx.stroke();
+    }
   }
+  ctx.globalAlpha = 1;
 }
 
 function drawMoveHint() {
@@ -357,8 +532,9 @@ function update(dt) {
 
   var dx = pos.x - px, dy = pos.y - py;
   var d = Math.hypot(dx, dy);
+  if (dx > 0.3) facing = 1;
+  else if (dx < -0.3) facing = -1;
   if (d > 0.05) {
-    lastAngle = Math.atan2(dy, dx);
     totalDistance += d;
     punchHole(pos.x, pos.y);
     trail.push({ x: pos.x, y: pos.y, dist: totalDistance });
@@ -373,7 +549,7 @@ function render() {
   ctx.drawImage(imgCanvas, 0, 0);
   ctx.drawImage(maskCanvas, 0, 0);
   drawTrail();
-  drawUnicorn(pos, lastAngle);
+  drawUnicorn(pos);
   if (gameStarted && !hasMoved && !gameOver) drawMoveHint();
 }
 
@@ -385,6 +561,7 @@ function loop(t) {
   requestAnimationFrame(loop);
 }
 
+showTutorialStep(0);
 loadRound();
 requestAnimationFrame(loop);
 })();
