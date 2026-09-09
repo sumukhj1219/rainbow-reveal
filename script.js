@@ -161,6 +161,11 @@ var deck = []; // shuffled queue of image indices, refilled when empty
 var lastShownIdx = -1;
 var lives = 3;
 var totalDistance = 0;
+var HS_KEY = 'rr_hs';
+var highScore = 0;
+try { highScore = parseInt(localStorage.getItem(HS_KEY), 10) || 0; } catch (e) {}
+var newHighScore = false;
+var lastScore = 0;
 var pos = { x: W/2, y: H/2 };
 var target = { x: W/2, y: H/2 };
 var facing = 1;
@@ -269,6 +274,7 @@ var tutorialStep = 0;
 function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 function normalize(s) { return s.trim().toLowerCase().replace(/[^a-z]/g, ''); }
 function moves() { return Math.floor(totalDistance / 10); }
+function calcScore(revealed, m) { return Math.round(revealed * 1000 / (m + 1)); }
 
 function nextImageIndex() {
   if (deck.length === 0) {
@@ -319,12 +325,15 @@ function updateHUD() {
     hearts += '<img src="public/life.png" class="life-icon' + (i < lives ? '' : ' lost') + '" alt="life">';
   }
   livesHud.innerHTML = hearts;
-  hud.textContent = 'moves: ' + moves() + '  round: ' + roundNumber;
+  hud.textContent = 'moves: ' + moves() + '  round: ' + roundNumber + '  best: ' + highScore;
 
   if (gameOver) {
     overlay.style.display = 'flex';
-    overlayText.textContent = 'Game Over — ' + (roundNumber - 1) +
-      ' picture' + (roundNumber - 1 === 1 ? '' : 's') + ' revealed, ' + moves() + ' moves';
+    var revealed = roundNumber - 1;
+    overlayText.innerHTML = 'Game Over — ' + revealed +
+      ' picture' + (revealed === 1 ? '' : 's') + ' revealed, ' + moves() + ' moves<br>' +
+      'Score: ' + lastScore + '<br>' +
+      (newHighScore ? '<b>New high score!</b>' : 'Best: ' + highScore);
   } else {
     overlay.style.display = 'none';
   }
@@ -354,7 +363,16 @@ function submitGuess() {
   } else {
     lives -= 1;
     showToast(BAD_MESSAGES[Math.floor(Math.random() * BAD_MESSAGES.length)], 'bad');
-    if (lives <= 0) { gameOver = true; playGameOver(); } else { playWrong(); }
+    if (lives <= 0) {
+      gameOver = true;
+      lastScore = calcScore(roundNumber - 1, moves());
+      newHighScore = lastScore > highScore;
+      if (newHighScore) {
+        highScore = lastScore;
+        try { localStorage.setItem(HS_KEY, highScore); } catch (e) {}
+      }
+      playGameOver();
+    } else { playWrong(); }
     updateHUD();
   }
 }
@@ -363,6 +381,7 @@ function restart() {
   lives = 3;
   totalDistance = 0;
   gameOver = false;
+  newHighScore = false;
   roundNumber = 0;
   deck = [];
   lastShownIdx = -1;
